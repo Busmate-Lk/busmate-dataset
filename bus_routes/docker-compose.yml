@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  bus-extractor:
+    build: .
+    container_name: bus_route_extractor
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+    stdin_open: true
+    tty: true

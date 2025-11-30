@@ -1,0 +1,161 @@
+csv_schema:
+  file_name: routes_consolidated.csv
+  description: Consolidated dataset for Route Groups, Routes, and Route Stops
+  entities_included:
+    - route_group
+    - route
+    - route_stop
+  
+  columns:
+    # Route Group Fields
+    route_group_name:
+      type: string
+      required: true
+      description: Name of the route group
+      max_length: 255
+    
+    route_group_description:
+      type: string
+      required: false
+      description: Description of the route group
+      max_length: 1000
+    
+    # Route Fields
+    route_name:
+      type: string
+      required: true
+      description: Name of the route
+      max_length: 255
+    
+    route_description:
+      type: string
+      required: false
+      description: Description of the route
+      max_length: 1000
+    
+    route_start_stop_name:
+      type: string
+      required: true
+      description: Name of the start stop
+      max_length: 255
+    
+    route_start_stop_id:
+      type: string
+      required: false
+      description: External reference ID for start stop (will be populated after stops get UUIDs)
+      max_length: 100
+    
+    route_end_stop_name:
+      type: string
+      required: true
+      description: Name of the end stop
+      max_length: 255
+    
+    route_end_stop_id:
+      type: string
+      required: false
+      description: External reference ID for end stop (will be populated after stops get UUIDs)
+      max_length: 100
+    
+    route_distance_km:
+      type: decimal
+      required: false
+      description: Total route distance in kilometers
+      precision: 10
+      scale: 2
+    
+    route_estimated_duration_minutes:
+      type: integer
+      required: false
+      description: Estimated duration of the route in minutes
+      min_value: 0
+    
+    route_direction:
+      type: string
+      required: false
+      description: Direction of the route (e.g., UP, DOWN, NORTH, SOUTH, etc.)
+      max_length: 50
+    
+    # Route Stop Fields
+    route_stop_name:
+      type: string
+      required: true
+      description: Name of the stop along the route
+      max_length: 255
+    
+    route_stop_id:
+      type: string
+      required: false
+      description: External reference ID for the stop (will be populated after stops get UUIDs)
+      max_length: 100
+    
+    stop_order:
+      type: integer
+      required: true
+      description: Order of the stop in the route sequence (starting from 1)
+      min_value: 1
+    
+    distance_from_start_km:
+      type: decimal
+      required: false
+      description: Distance from route start to this stop in kilometers
+      precision: 10
+      scale: 2
+
+  relationships:
+    route_group_to_route:
+      description: One route group can have multiple routes
+      key: route_group_name
+    
+    route_to_stops:
+      description: One route can have multiple stops
+      composite_key: [route_group_name, route_name]
+  
+  data_structure_rules:
+    - Each row represents one stop in a route
+    - Route group and route information is repeated for each stop in the same route
+    - Routes with the same route_group_name belong to the same route group
+    - Routes are uniquely identified by the combination of route_group_name and route_name
+    - Stop sequence is defined by stop_order within each route
+  
+  example_data:
+    # Colombo City Routes
+    - route_group_name: "Colombo City Routes"
+      route_group_description: "Bus routes operating within Colombo metropolitan area"
+      route_name: "Route 100"
+      route_description: "Pettah to Mount Lavinia via Galle Road"
+      route_start_stop_name: "Pettah Central Bus Stand"
+      route_start_stop_id: ""
+      route_end_stop_name: "Mount Lavinia Station"
+      route_end_stop_id: ""
+      route_distance_km: 18.5
+      route_estimated_duration_minutes: 75
+      route_direction: "OUTBOUND"
+      route_stop_name: "Pettah Central Bus Stand"
+      route_stop_id: ""
+      stop_order: 1
+      distance_from_start_km: 0.0
+    
+    - route_group_name: "Colombo City Routes"
+      route_group_description: "Bus routes operating within Colombo metropolitan area"
+      route_name: "Route 100"
+      route_description: "Pettah to Mount Lavinia via Galle Road"
+      route_start_stop_name: "Pettah Central Bus Stand"
+      route_start_stop_id: ""
+      route_end_stop_name: "Mount Lavinia Station"
+      route_end_stop_id: ""
+      route_distance_km: 18.5
+      route_estimated_duration_minutes: 75
+      route_direction: "INBOUND"
+      route_stop_name: "Fort Railway Station"
+      route_stop_id: ""
+      stop_order: 2
+      distance_from_start_km: 1.2
+
+  import_notes:
+    - UUIDs for all entities will be generated during import
+    - Stop names are used initially for reference until stops receive UUIDs
+    - Stop ID fields (route_start_stop_id, route_end_stop_id, route_stop_id) can be left empty initially
+    - After stops are created in the system and receive UUIDs, these IDs should be updated in the dataset
+    - The import process will de-duplicate route groups and routes based on their names
+    - Stop order must be sequential within each route

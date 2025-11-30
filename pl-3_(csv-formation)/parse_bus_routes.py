@@ -78,10 +78,22 @@ class BusRouteParser:
                         route_number = route_info
                         route_name = ""
                     
+                    # Check if the previous non-empty line was a හරහා line
+                    # Look backwards to find the most recent non-empty line
+                    route_through_for_this_route = ""
+                    for prev_i in range(i - 1, -1, -1):
+                        prev_line = lines[prev_i].strip()
+                        if prev_line:  # Found a non-empty line
+                            if prev_line.endswith('හරහා'):
+                                # This route has its own හරහා line
+                                route_through_for_this_route = current_route_through or ""
+                            # If the previous line is not හරහා, this route has no route_through
+                            break
+                    
                     current_route = {
                         'route_number': route_number,
                         'route_name': route_name,
-                        'route_through': current_route_through or "",
+                        'route_through': route_through_for_this_route,
                         'stops': []
                     }
                     i += 1

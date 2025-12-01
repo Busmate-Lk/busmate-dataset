@@ -6,16 +6,16 @@ from pathlib import Path
 
 def merge_route_sections(text):
     """
-    Merge route sections that got split across PDF pages.
-    Routes are identified by the pattern where each route starts with:
-    - Stop order: 0
-    - Distance: 0.00
+    Merge route sections that got split across multiple PDF pages.
+    Routes with same header (ROUTE: line) should be merged into one.
     """
     
     lines = text.split('\n')
     merged_routes = []
     
-    current_route = []
+    current_route_header = None
+    current_route_through = None
+    current_stops = []
     collecting_stops = False
     
     for line in lines:
@@ -25,44 +25,52 @@ def merge_route_sections(text):
             
         # Check if this is a new route header (ROUTE: line)
         if line.startswith('ROUTE:'):
-            # If we were collecting stops from previous route, save it first
-            if current_route and collecting_stops:
-                merged_routes.extend(current_route)
-                merged_routes.append("")  # Add empty line between routes
+            # Extract just the route info without "ROUTE: " prefix
+            route_info = line[7:]  # Remove "ROUTE: "
             
-            # Start new route collection
-            current_route = [line]
-            collecting_stops = False
+            # If this is a different route than current one, save previous route
+            if current_route_header and route_info != current_route_header:
+                # Save the previous complete route
+                merged_routes.append(f"ROUTE: {current_route_header}")
+                if current_route_through:
+                    merged_routes.append(f"ROUTE_THROUGH: {current_route_through}")
+                else:
+                    merged_routes.append("ROUTE_THROUGH: null")
+                merged_routes.extend(current_stops)
+                merged_routes.append("")  # Empty line between routes
+                
+                # Reset for new route
+                current_stops = []
+                current_route_through = None
+            
+            # Set or keep current route header
+            current_route_header = route_info
+            collecting_stops = True
             
         # Check if this is a ROUTE_THROUGH line
         elif line.startswith('ROUTE_THROUGH:'):
-            current_route.append(line)
+            # Only keep the first ROUTE_THROUGH for this route
+            if not current_route_through:
+                current_route_through = line[15:]  # Remove "ROUTE_THROUGH: "
             
         # Check if this is a bus stop line
         elif re.search(r'^\d+\s+[\d,]+\.\d+\s+.+$', line):
-            # Check if this is the beginning of stops (stop 0, distance 0.00)
-            if re.search(r'^0\s+0\.00\s+', line):
-                # If we already have stops in current_route, this is a new route
-                if collecting_stops:
-                    # Save the current route and start new one
-                    merged_routes.extend(current_route)
-                    merged_routes.append("")
-                    # Keep only the route header lines (ROUTE and ROUTE_THROUGH)
-                    route_header = [l for l in current_route if l.startswith(('ROUTE:', 'ROUTE_THROUGH:'))]
-                    current_route = route_header
-                
-                collecting_stops = True
-            
-            current_route.append(line)
+            if collecting_stops:
+                current_stops.append(line)
     
     # Don't forget the last route
-    if current_route:
-        merged_routes.extend(current_route)
+    if current_route_header:
+        merged_routes.append(f"ROUTE: {current_route_header}")
+        if current_route_through:
+            merged_routes.append(f"ROUTE_THROUGH: {current_route_through}")
+        else:
+            merged_routes.append("ROUTE_THROUGH: null")
+        merged_routes.extend(current_stops)
     
     return merged_routes
 
 def process_file(input_file, output_file):
-    """Merge route sections that were split across PDF pages"""
+    """Merge route sections that were split across multiple PDF pages"""
     
     try:
         with open(input_file, 'r', encoding='utf-8') as f:
@@ -91,13 +99,26 @@ def process_file(input_file, output_file):
     
     return merged_data
 
-def count_routes(merged_data):
-    """Count how many complete routes we have after merging"""
-    route_count = 0
+def analyze_routes(merged_data):
+    """Analyze routes to show merging results"""
+    routes = []
+    current_route = {}
+    
     for line in merged_data:
         if line.startswith('ROUTE:'):
-            route_count += 1
-    return route_count
+            if current_route:
+                routes.append(current_route)
+            current_route = {'header': line, 'stops': []}
+        elif line.startswith('ROUTE_THROUGH:'):
+            current_route['through'] = line
+        elif re.search(r'^\d+\s+[\d,]+\.\d+\s+.+$', line):
+            current_route['stops'].append(line)
+    
+    # Add the last route
+    if current_route:
+        routes.append(current_route)
+    
+    return routes
 
 def main():
     # Get the script's directory to build relative paths
@@ -108,7 +129,7 @@ def main():
     default_output = script_dir / "staging/step-4-route_merging/merged_bus_routes.txt"
     
     parser = argparse.ArgumentParser(
-        description='Merge route sections that were split across PDF pages',
+        description='Merge route sections that were split across multiple PDF pages',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Default behavior (no arguments):
@@ -138,33 +159,35 @@ Default behavior (no arguments):
     merged_data = process_file(input_file, output_file)
     
     if merged_data:
-        route_count = count_routes(merged_data)
-        print(f"Total complete routes after merging: {route_count}")
+        routes = analyze_routes(merged_data)
+        print(f"Total complete routes after merging: {len(routes)}")
         
-        print("\nSample of merged routes:")
-        route_samples = []
-        current_route = []
+        print("\n=== Route Analysis ===")
+        for i, route in enumerate(routes[:3]):  # Show first 3 routes as samples
+            print(f"\nRoute {i+1}:")
+            print(f"  Header: {route['header']}")
+            print(f"  Through: {route.get('through', 'ROUTE_THROUGH: null')}")
+            print(f"  Total stops: {len(route['stops'])}")
+            
+            # Show first 5 stops
+            print(f"  First 5 stops:")
+            for stop in route['stops'][:5]:
+                print(f"    {stop}")
+            
+            # Show last 5 stops if route is long
+            if len(route['stops']) > 10:
+                print(f"  Last 5 stops:")
+                for stop in route['stops'][-5:]:
+                    print(f"    {stop}")
+            
+            # Check for stop numbering issues
+            if route['stops']:
+                first_stop = route['stops'][0]
+                last_stop = route['stops'][-1]
+                print(f"  Stop range: {first_stop.split()[0]} to {last_stop.split()[0]}")
         
-        for line in merged_data:
-            if line.startswith('ROUTE:'):
-                if current_route:
-                    route_samples.append(current_route)
-                    if len(route_samples) >= 2:  # Show 2 sample routes
-                        break
-                current_route = [line]
-            elif line:
-                current_route.append(line)
-        
-        # Add the last route if we have samples to show
-        if current_route and len(route_samples) < 2:
-            route_samples.append(current_route)
-        
-        for i, route in enumerate(route_samples):
-            print(f"\n--- Sample Route {i+1} ---")
-            for j, line in enumerate(route[:15]):  # Show first 15 lines of each route
-                print(f"  {line}")
-            if len(route) > 15:
-                print(f"  ... and {len(route) - 15} more stops")
+        if len(routes) > 3:
+            print(f"\n... and {len(routes) - 3} more routes")
 
 if __name__ == "__main__":
     main()

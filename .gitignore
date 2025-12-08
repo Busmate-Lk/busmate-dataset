@@ -48,7 +48,7 @@ Thumbs.db
 .cache/
 
 # Staging data (keep structure but not data)
-staging/*/
+# staging/*/
 !staging/*/.gitkeep
 
 # Processed data backups
